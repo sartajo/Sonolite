@@ -1,0 +1,38 @@
+#include <Servo.h>
+
+Servo ultrasoundServo;  // Create servo object to control a servo
+
+// Define the pin where the servo signal wire is connected
+const int servoPin = 9;
+
+// Define the 10 specific angles for the sector scan
+// We use an array so you can easily tweak these numbers later
+int scanAngles[] = {45, 55, 65, 75, 85, 95, 105, 115, 125, 135};
+const int numAngles = 10; 
+
+void setup() {
+  ultrasoundServo.attach(servoPin);  // Attaches the servo on pin 9 to the servo object
+  Serial.begin(9600);                // Open serial for debugging
+  
+  // Move to start position immediately
+  ultrasoundServo.write(scanAngles[0]);
+  delay(1000); // Give it a second to get to the start position
+}
+
+void loop() {
+  // --- SWEEP FORWARD ---
+  for (int i = 0; i < numAngles; i++) {
+    ultrasoundServo.write(scanAngles[i]);
+    
+    // Delay to allow the servo to reach the position 
+    // AND to simulate the time it takes to "ping" the transducer
+    delay(200); 
+  }
+
+  // --- SWEEP BACKWARD ---
+  // We start from numAngles - 2 because we are already at the last angle (index numAngles-1)
+  for (int i = numAngles - 2; i >= 0; i--) {
+    ultrasoundServo.write(scanAngles[i]);
+    delay(200);
+  }
+}
