@@ -7,7 +7,41 @@ McMaster Health Sciences; Dr. Troy Farncombe
 
 University of Toronto Medical Sciences; Dr. F. Stuart Foster
 
+Update:
 
+# Ultrasound Update: Implementation of Picoscope/Pulser/Fabricated Transducer 
+This document outlines the basic hardware setup and software processing pipeline used to generate a single-element ultrasound B-scan image using a custom pulser board, a PicoScope 2204A, and MATLAB. 
+
+## 1. Hardware Setup
+The system operates similarly to the previous step, but with the addition of the pulser. The DC power supply feeds the pulser, and pulser is connected to the transducer, and also has Rx/Tx with the picoscope. The picoscope is then connected to the MacBook/laptop, which runs Matlab and picoscope scope, and the image is generated in Matlab. The system operates in a pulse-echo configuration where the PicoScope acts as the master clock, triggering a custom high-voltage pulser board to fire the transducer.
+
+**Connections:**
+* **PicoScope AWG (Gen) $\rightarrow$ Pulser Board (Trigger In / X1):** Sends a low-voltage square wave to wake up the board and command it to fire.
+* **Pulser Board (RF Out / X4) $\rightarrow$ PicoScope Channel A:** Sends the amplified acoustic echo back to the oscilloscope.
+* **Pulser Board (X2) $\rightarrow$ Transducer:** The physical connection to the piezoelectric crystal.
+* **DC Power Supply $\rightarrow$ Pulser Board:** Provides the necessary high voltage for the board to generate the transmission pulse (the "Main Bang").
+
+## 2. PicoScope 7 Configuration & Data Capture
+To view and capture the raw RF (Radio Frequency) acoustic waves, the PicoScope 7 software is configured as follows:
+
+* **Generator (AWG):** * Type: Square Wave
+  * Frequency: 1 kHz (fires the transducer 1,000 times per second)
+  * Amplitude: 1 V
+  * Offset: 1 V (Creates a clean 0V to +2V logic pulse)
+* **Timebase (X-Axis):** Set to `5 µs/div` to zoom in on the fast-moving acoustic echoes.
+* **Channel A (Y-Axis):** Set to `±1 V` or `±2 V` depending on the echo strength.
+* **Trigger:** Set to `Auto` or `Repeat`, Source `Channel A`, with a rising edge threshold of `~400 mV` to freeze the waveform on the screen.
+
+**Exporting Data:**
+Once an echo is acquired (e.g., bouncing off the bottom of a water cup), the waveform is paused and saved as a standard `.txt` file. This exports the raw `Time` and `Channel A Voltage` arrays.
+
+## 3. MATLAB Image Generation
+An ultrasound image (B-scan) is created by stacking multiple 1D acoustic recordings (A-scans) side-by-side. The raw RF voltage data is converted into grayscale pixel intensity using envelope detection.
+
+### The Processing Script
+The following MATLAB code reads the exported `.txt` files, extracts the voltage data, calculates the signal envelope, and displays the final 2D image.
+
+# Main Experimentation
 <img width="604" height="734" alt="image" src="https://github.com/user-attachments/assets/953ec253-adfc-4391-a4cc-b5aea1620888" />
 
 Figure 1: System Breakdown
