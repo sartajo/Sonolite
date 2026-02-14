@@ -38,6 +38,8 @@ Once an echo is acquired (e.g., bouncing off the bottom of a water cup), the wav
 ## 3. MATLAB Image Generation
 An ultrasound image (B-scan) is created by stacking multiple 1D acoustic recordings (A-scans) side-by-side. The raw RF voltage data is converted into grayscale pixel intensity using envelope detection.
 
+<img width="604" height="734" alt="image" src="[https://github.com/user-attachments/assets/953ec253-adfc-4391-a4cc-b5aea1620888](https://github.com/sartajo/Sonolite/blob/picoscope-update/GeneratedIMage.png)" />
+
 ### The Processing Script
 The following MATLAB code reads the exported `.txt` files, extracts the voltage data, calculates the signal envelope, and displays the final 2D image.
 
