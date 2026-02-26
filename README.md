@@ -7,7 +7,7 @@ McMaster Health Sciences; Dr. Troy Farncombe
 
 University of Toronto Medical Sciences; Dr. F. Stuart Foster
 
-Update:
+Update (02/2026) :
 
 # Ultrasound Update: Implementation of Picoscope/Pulser/Fabricated Transducer 
 This document outlines the basic hardware setup and software processing pipeline used to generate a single-element ultrasound B-scan image using a custom pulser board, a PicoScope 2204A, and MATLAB. 
@@ -20,6 +20,14 @@ The system operates similarly to the previous step, but with the addition of the
 * **Pulser Board (RF Out / X4) $\rightarrow$ PicoScope Channel A:** Sends the amplified acoustic echo back to the oscilloscope.
 * **Pulser Board (X2) $\rightarrow$ Transducer:** The physical connection to the piezoelectric crystal.
 * **DC Power Supply $\rightarrow$ Pulser Board:** Provides the necessary high voltage for the board to generate the transmission pulse (the "Main Bang").
+
+<img width="975" height="373" alt="image" src="https://github.com/user-attachments/assets/84bde8c2-c655-4b3b-85c3-d51fdaa4cf13" />
+
+  Pulser Schematic
+
+ <img width="544" height="417" alt="image" src="https://github.com/user-attachments/assets/da2409a6-095a-423e-8915-daa004c9c9c8" />
+
+Custom AFE board
 
 ## 2. PicoScope 7 Configuration & Data Capture
 To view and capture the raw RF (Radio Frequency) acoustic waves, the PicoScope 7 software is configured as follows:
@@ -35,15 +43,21 @@ To view and capture the raw RF (Radio Frequency) acoustic waves, the PicoScope 7
 **Exporting Data:**
 Once an echo is acquired (e.g., bouncing off the bottom of a water cup), the waveform is paused and saved as a standard `.txt` file. This exports the raw `Time` and `Channel A Voltage` arrays.
 
-## 3. MATLAB Image Generation
-An ultrasound image (B-scan) is created by stacking multiple 1D acoustic recordings (A-scans) side-by-side. The raw RF voltage data is converted into grayscale pixel intensity using envelope detection.
+<img width="648" height="406" alt="image" src="https://github.com/user-attachments/assets/e7a17dfc-6ea8-4374-85cc-d212903f35e6" />
 
-<img width="604" height="734" alt="image" src="[https://github.com/user-attachments/assets/953ec253-adfc-4391-a4cc-b5aea1620888](https://github.com/sartajo/Sonolite/blob/picoscope-update/GeneratedIMage.png)" />
+Pulse of an empty cup
+
+## 3. MATLAB Image Generation
+An ultrasound image (B-scan) is created by stacking multiple 1D acoustic recordings (A-scans) side-by-side. The raw RF voltage data is converted into grayscale pixel intensity through envelope detection, followed by normalization, depth-dependent gain compensation (TGC), logarithmic compression to reduce dynamic range, and contrast adjustment before grayscale mapping for final image display.
+
+<img width="580" height="442" alt="image" src="https://github.com/user-attachments/assets/ff095587-037e-4e03-b3fb-2baff5e6c400" />
+
+Ultrasound of an empty pitcher (Note that the pulser was positioned 3.5 cm above the bottom of the pitcher, and the reflection from the bottom surface is visible here.) 
 
 ### The Processing Script
-The following MATLAB code reads the exported `.txt` files, extracts the voltage data, calculates the signal envelope, and displays the final 2D image.
+The following MATLAB code reads the exported data files, extracts the voltage signals, applies envelope detection and dynamic range compression, and displays the resulting 2D B-mode image.
 
-# Main Experimentation
+# Initial Prototype (12/2025)
 <img width="604" height="734" alt="image" src="https://github.com/user-attachments/assets/953ec253-adfc-4391-a4cc-b5aea1620888" />
 
 Figure 1: System Breakdown
