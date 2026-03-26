@@ -17,11 +17,11 @@ import matplotlib.pyplot as plt
 # =========================
 # Settings (edit if needed)
 # =========================
-pattern     = 'Data/20260225python_*.csv'   # your file pattern
+pattern     = r'C:\Users\omarS\Documents\Capstone\Data2/dup\avg_*.csv'   # your file pattern
 c           = 1480               # speed of sound in water (m/s)
 dynRange_dB = 50                 # display dynamic range (e.g., 40-70)
 useTGC      = True               # time gain compensation on/off
-tgc_alpha   = 1.5                # strength of TGC (try 0.5 to 3)
+tgc_alpha   = 2                # strength of TGC (try 0.5 to 3)
 
 # =========================
 # Load file list
@@ -95,8 +95,10 @@ B = B[valid, :]
 # =========================
 # Envelope detection (Hilbert)
 # =========================
+B = B - np.mean(B, axis=0)
 env = np.abs(hilbert(B.astype(np.float64), axis=0))   # N x K
 env = env / (env.max() + np.finfo(float).eps)
+
 
 # =========================
 # Optional TGC (boost deeper echoes)
@@ -134,3 +136,4 @@ ax.set_ylabel('Depth (mm)')
 ax.set_title(f'B-mode (Envelope + Log) | Water c={c} m/s | DR={dynRange_dB} dB')
 plt.tight_layout()
 plt.show()
+
