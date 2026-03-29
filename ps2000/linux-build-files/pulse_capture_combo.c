@@ -1,3 +1,15 @@
+/*
+
+Program used to emit signal via Signal generator on the picoscipe into HV Ultrasonic Pulser board
+Program recives signals via channel A on the picoscope
+
+Use; bash in terminal and the signal generator turns on. To capture hit enter and it will save a waveform in a csv file under captures folder in the same dir. 
+
+Authored By Omar Sartaj
+
+*/
+
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
