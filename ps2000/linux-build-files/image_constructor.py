@@ -1,5 +1,5 @@
 """
-Ultrasound B-mode Image Reconstruction Script
+Ultrasound B-mode Image Reconstruction with Continuity-Based Echo Tracking
 
 This script processes raw A-scan ultrasound data stored in CSV files and
 reconstructs a 2D B-mode image. Each scan is aligned using transmit (TX)
@@ -7,17 +7,16 @@ pulse detection, followed by ringdown suppression and time-of-flight
 windowing to isolate echo signals.
 
 The RF data is converted to an envelope using the Hilbert transform,
-normalized, and log-compressed to generate a grayscale image. Multiple
-A-scans are stacked to form the final B-mode representation.
+normalized, and log-compressed to generate a grayscale image.
 
-The script also detects and tracks the dominant echo in each scan,
-overlaying it on the image and plotting its depth variation across scans.
+For tracking, the script follows one dominant reflector across scans using
+continuity: after the first scan, it prefers peaks close to the previously
+tracked depth. This allows gradual motion in depth while remaining more
+robust than simple per-scan strongest-peak selection.
 
 Outputs:
 - Standard B-mode image (grayscale)
-- Hybrid figure with echo tracking and depth plot
-
-Authored by Omar Sartaj & Zayeed Ghori
+- Hybrid figure with tracked reflector and depth plot
 """
 
 import sys
@@ -26,7 +25,7 @@ import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.signal import hilbert
+from scipy.signal import hilbert, find_peaks
 from scipy.ndimage import median_filter
 
 # =========================
@@ -39,14 +38,24 @@ pulse_threshold_mv = 220.0
 min_pulse_width = 6
 refractory_us = 12.0
 
-echo_start_us = 100.0
-echo_end_us   = 325.0
+# Broad echo window
+echo_start_us = 50.0
+echo_end_us   = 200.0
 
 dynRange_dB = 40
 threshold_frac_bmode = 0.08
-threshold_frac_track = 0.20
+
+# Peak detection for tracking
+peak_height_frac = 0.18
+peak_min_distance_samples = 8
+
+# Continuity tracking
+max_depth_jump_mm = 12.0
+fallback_to_strongest = True
 track_smooth_size = 3
 
+# Optional manual depth guard band
+# Leave as None for no manual restriction
 track_min_mm = None
 track_max_mm = None
 
@@ -54,7 +63,7 @@ track_max_mm = None
 # Input
 # =========================
 if len(sys.argv) < 2:
-    raise ValueError("Usage: python3 image_constructor_final.py <capture_folder>")
+    raise ValueError("Usage: python3 image_constructor_continuity.py <capture_folder>")
 
 capture_folder = sys.argv[1]
 pattern = os.path.join(capture_folder, "scan_*.csv")
@@ -143,11 +152,12 @@ def process_ascan(v):
     gate_end = min(refractory_idx, len(v))
     v[:gate_end] = 0.0
 
-    raw = np.zeros(win_len)
+    raw = np.zeros(win_len, dtype=np.float64)
     src1 = min(echo_end_idx, len(v))
     if src1 > echo_start_idx:
         raw[:src1 - echo_start_idx] = v[echo_start_idx:src1]
 
+    # simple detrend
     raw -= np.median(raw)
 
     env = np.abs(hilbert(raw))
@@ -157,6 +167,99 @@ def process_ascan(v):
     bmode[bmode < threshold_frac_bmode] = 0.0
 
     return env, bmode, tx_idx
+
+# =========================
+# Candidate peaks in one scan
+# =========================
+def detect_candidates(env, depth_mm):
+    peaks, props = find_peaks(
+        env,
+        height=peak_height_frac,
+        distance=peak_min_distance_samples
+    )
+
+    if len(peaks) == 0:
+        return []
+
+    heights = props["peak_heights"]
+    candidates = []
+
+    for p, h in zip(peaks, heights):
+        d = float(depth_mm[p])
+
+        if track_min_mm is not None and d < track_min_mm:
+            continue
+        if track_max_mm is not None and d > track_max_mm:
+            continue
+
+        candidates.append({
+            "sample_idx": int(p),
+            "depth_mm": d,
+            "strength": float(h)
+        })
+
+    # strongest first
+    candidates.sort(key=lambda x: x["strength"], reverse=True)
+    return candidates
+
+# =========================
+# Continuity-based tracking
+# =========================
+def track_reflector(all_candidates):
+    tracked_depth = []
+    tracked_strength = []
+    prev_depth = None
+
+    for i, candidates in enumerate(all_candidates):
+        if len(candidates) == 0:
+            tracked_depth.append(np.nan)
+            tracked_strength.append(np.nan)
+            continue
+
+        chosen = None
+
+        # first valid scan: pick strongest candidate
+        if prev_depth is None or not np.isfinite(prev_depth):
+            chosen = candidates[0]
+
+        else:
+            # choose strongest candidate within jump band
+            nearby = [
+                c for c in candidates
+                if abs(c["depth_mm"] - prev_depth) <= max_depth_jump_mm
+            ]
+
+            if len(nearby) > 0:
+                nearby.sort(key=lambda x: x["strength"], reverse=True)
+                chosen = nearby[0]
+            elif fallback_to_strongest:
+                chosen = candidates[0]
+
+        if chosen is None:
+            tracked_depth.append(np.nan)
+            tracked_strength.append(np.nan)
+        else:
+            tracked_depth.append(chosen["depth_mm"])
+            tracked_strength.append(chosen["strength"])
+            prev_depth = chosen["depth_mm"]
+
+    tracked_depth = np.array(tracked_depth, dtype=float)
+    tracked_strength = np.array(tracked_strength, dtype=float)
+
+    # smooth valid values only
+    smoothed = tracked_depth.copy()
+    valid = np.isfinite(tracked_depth)
+
+    if np.count_nonzero(valid) >= track_smooth_size:
+        temp = tracked_depth.copy()
+        valid_idx = np.where(valid)[0]
+        for i in np.where(~valid)[0]:
+            nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
+            temp[i] = tracked_depth[nearest]
+        smoothed = median_filter(temp, size=track_smooth_size)
+        smoothed[~valid] = np.nan
+
+    return tracked_depth, tracked_strength, smoothed
 
 # =========================
 # Process all scans
@@ -187,32 +290,27 @@ depth_mm = (c * t / 2.0) * 1000.0
 scan_idx = np.arange(B.shape[1])
 
 # =========================
-# Tracking
+# Build candidates + track one object
 # =========================
-track = E.copy()
-track[track < threshold_frac_track] = 0.0
+all_candidates = []
+for col in range(E.shape[1]):
+    candidates = detect_candidates(E[:, col], depth_mm)
+    all_candidates.append(candidates)
 
-if track_min_mm is not None and track_max_mm is not None:
-    mask = (depth_mm >= track_min_mm) & (depth_mm <= track_max_mm)
-    track[~mask, :] = 0.0
+tracked_depth, tracked_strength, tracked_smooth = track_reflector(all_candidates)
 
-peak_idx = np.argmax(track, axis=0)
-peak_val = track[peak_idx, np.arange(track.shape[1])]
-peak_depth = depth_mm[peak_idx].astype(float)
-peak_depth[peak_val <= 0] = np.nan
-
-smooth = peak_depth.copy()
-valid = np.isfinite(peak_depth)
-
-if np.sum(valid) >= track_smooth_size:
-    temp = peak_depth.copy()
-    valid_idx = np.where(valid)[0]
-    if len(valid_idx) > 0:
-        for i in np.where(~valid)[0]:
-            nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
-            temp[i] = peak_depth[nearest]
-        smooth = median_filter(temp, size=track_smooth_size)
-        smooth[~valid] = np.nan
+valid_tracked = np.isfinite(tracked_depth)
+if np.any(valid_tracked):
+    print(
+        f"Tracked reflector mean depth: "
+        f"{np.nanmean(tracked_depth):.2f} mm"
+    )
+    print(
+        f"Tracked reflector depth range: "
+        f"{np.nanmin(tracked_depth):.2f} mm to {np.nanmax(tracked_depth):.2f} mm"
+    )
+else:
+    print("No valid reflector track found.")
 
 # =========================
 # Log compression
@@ -221,7 +319,7 @@ B_db = 20 * np.log10(B + 1e-12)
 B_db = np.maximum(B_db, -dynRange_dB)
 
 # =========================
-# POPUP 1: Regular image only
+# Popup 1: Regular image
 # =========================
 fig1, ax1 = plt.subplots(figsize=(10, 6))
 im1 = ax1.imshow(
@@ -244,11 +342,11 @@ plt.savefig(regular_output, dpi=300, bbox_inches='tight')
 print(f"Saved regular image: {regular_output}")
 
 # =========================
-# POPUP 2: Hybrid tracking figure
+# Popup 2: Hybrid tracking figure
 # =========================
 fig2 = plt.figure(figsize=(10, 10))
 
-# Top: B-mode + track
+# Top
 ax2 = plt.subplot(3, 1, 1)
 im2 = ax2.imshow(
     B_db,
@@ -259,18 +357,23 @@ im2 = ax2.imshow(
     extent=[0, B.shape[1] - 1, depth_mm[-1], depth_mm[0]],
     origin='upper'
 )
-ax2.plot(scan_idx, smooth, 'r-', linewidth=2)
-ax2.set_title('Envelope B-mode with Tracked Reflector')
+ax2.plot(scan_idx, tracked_smooth, 'r-', linewidth=2, label='Tracked reflector')
+ax2.set_title('Envelope B-mode with Continuity-Based Reflector Tracking')
 ax2.set_xlabel('Capture Index')
 ax2.set_ylabel('Depth (mm)')
+ax2.legend(loc='upper right')
 plt.colorbar(im2, ax=ax2, label='dB')
 
-# Middle: zoom
+# Middle
 ax3 = plt.subplot(3, 1, 2)
-zoom_min = max(np.nanmin(smooth) - 20, depth_mm.min()) if np.any(np.isfinite(smooth)) else depth_mm.min()
-zoom_max = min(np.nanmax(smooth) + 20, depth_mm.max()) if np.any(np.isfinite(smooth)) else depth_mm.max()
-zoom_mask = (depth_mm >= zoom_min) & (depth_mm <= zoom_max)
+if np.any(np.isfinite(tracked_smooth)):
+    zoom_min = max(np.nanmin(tracked_smooth) - 15, depth_mm.min())
+    zoom_max = min(np.nanmax(tracked_smooth) + 15, depth_mm.max())
+else:
+    zoom_min = depth_mm.min()
+    zoom_max = depth_mm.max()
 
+zoom_mask = (depth_mm >= zoom_min) & (depth_mm <= zoom_max)
 B_zoom = B_db[zoom_mask, :]
 depth_zoom = depth_mm[zoom_mask]
 
@@ -283,20 +386,20 @@ im3 = ax3.imshow(
     extent=[0, B.shape[1] - 1, depth_zoom[-1], depth_zoom[0]],
     origin='upper'
 )
-ax3.plot(scan_idx, smooth, 'r-', linewidth=2)
+ax3.plot(scan_idx, tracked_smooth, 'r-', linewidth=2)
 ax3.set_title('Zoomed View Around Tracked Reflector')
 ax3.set_xlabel('Capture Index')
 ax3.set_ylabel('Depth (mm)')
 
-# Bottom: depth tracking
+# Bottom
 ax4 = plt.subplot(3, 1, 3)
-ax4.plot(scan_idx, peak_depth, 'o--', alpha=0.5, label='Raw')
-ax4.plot(scan_idx, smooth, 'r-', linewidth=2, label='Smoothed')
-ax4.set_title('Dominant Echo Depth per Scan')
+ax4.plot(scan_idx, tracked_depth, 'o--', alpha=0.5, label='Raw')
+ax4.plot(scan_idx, tracked_smooth, 'r-', linewidth=2, label='Smoothed')
+ax4.set_title('Tracked Reflector Depth vs Scan')
 ax4.set_xlabel('Capture Index')
 ax4.set_ylabel('Depth (mm)')
 ax4.grid(True)
-ax4.legend()
+ax4.legend(loc='best')
 
 plt.tight_layout()
 
