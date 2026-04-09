@@ -16,7 +16,12 @@ Our software pipeline interfaces with the PicoScope 2204A using the PicoSDK, wit
 
 Once acquisition is complete, the control script triggers the image reconstruction pipeline, implemented in Python . The script loads each captured A-scan (CSV), aligns signals by detecting the transmit pulse, and suppresses early-time artifacts such as ringdown. A time-of-flight window is then applied to isolate relevant echo data, which is converted to an amplitude envelope using the Hilbert transform. The resulting signals are normalized, thresholded, and log-compressed to generate grayscale intensity values. Multiple processed A-scans are stacked to reconstruct a 2D B-mode image. Additionally, the script identifies and tracks the dominant reflector across scans, producing both a standard image and a hybrid visualization with depth tracking.
 
+<img width="924" height="583" alt="image" src="https://github.com/user-attachments/assets/34513b54-bdc8-4b9c-b187-67b425acacc0" /> 
+<img width="604" height="608" alt="image" src="https://github.com/user-attachments/assets/d199d335-72c1-4ac4-8d01-217e4750e7e7" />
+
 The control script is integrated into a GUI that manages pulse activation and scan execution through a simple operator interface. Real-time terminal outputs are displayed within the application to report acquisition status, execution progress, and reconstruction updates. Upon completion, the GUI automatically presents both the reconstructed image and the corresponding analysis results, creating a unified workflow for control, monitoring, and visualization.
+
+<img width="1241" height="728" alt="image" src="https://github.com/user-attachments/assets/99a7d523-d276-4f93-9a35-8b0196521f8b" />
 
 # Update (02/2026):  
 This document outlines the basic hardware setup and software processing pipeline used to generate a single-element ultrasound B-scan image using a custom pulser board, a PicoScope 2204A, and MATLAB. 
