@@ -7,8 +7,19 @@ McMaster Health Sciences; Dr. Troy Farncombe
 
 University of Toronto Medical Sciences; Dr. F. Stuart Foster
 
-# Update (05/2026):  
-Our Setup:
+## System Specifications
+- Transducer: ~3.5 MHz single-element  
+- Excitation: 5 kHz, 2 Vpp (AWG-driven pulser trigger)  
+- Scan Range: ~4 cm linear translation  
+- Data Format: Time-voltage A-scans (CSV)  
+- Processing: Python (NumPy, SciPy, Matplotlib)
+
+<img width="1145" height="510" alt="image" src="https://github.com/user-attachments/assets/078900a8-6826-4e66-ad01-ed53a62691b2" />
+<div align="center">
+  System Diagram
+</div>
+  
+## System Architecture
 - Picoscope 2204A (Acts as our function Generator and Scope + ADC)
 - Analog Pulser Board (Ultrasonic pulser + RX receive chain)
 - Low Pass filter
@@ -40,14 +51,35 @@ Our software pipeline interfaces with the PicoScope 2204A using the PicoSDK, wit
 
 Once acquisition is complete, the control script triggers the image reconstruction pipeline, implemented in Python. The script loads each captured A-scan (CSV), aligns signals by detecting the transmit pulse, and suppresses early-time artifacts such as ringdown. A time-of-flight window is then applied to isolate relevant echo data, which is converted to an amplitude envelope using the Hilbert transform. The resulting signals are normalized, thresholded, and log-compressed to generate grayscale intensity values. Multiple processed A-scans are stacked to reconstruct a 2D B-mode image. Additionally, the script identifies and tracks the dominant reflector across scans, producing both a standard image and a hybrid visualization with depth tracking.
 
+## Results
+- B-mode image reconstruction from sequential A-scans  
+- Consistent echo detection across spatial scans  
+- Dominant reflector tracking implemented across scan indices  
+
 <img width="924" height="583" alt="image" src="https://github.com/user-attachments/assets/34513b54-bdc8-4b9c-b187-67b425acacc0" /> 
 <p align="center"> <img width="604" height="608" alt="image" src="https://github.com/user-attachments/assets/d199d335-72c1-4ac4-8d01-217e4750e7e7" />
   
 <p align="center"> 2 circular objects in water 
 
-The control script is integrated into a GUI that manages pulse activation and scan execution through a simple operator interface. Real-time terminal outputs are displayed within the application to report acquisition status, execution progress, and reconstruction updates. Upon completion, the GUI automatically presents both the reconstructed image and the corresponding analysis results, creating a unified workflow for control, monitoring, and visualization.
+## Usage
+
+The system is controlled through a GUI that interfaces with the acquisition and processing pipeline.
+
+- Launch `sonolite_gui.py` to start the application  
+- Use the GUI to initiate pulse generation and scan acquisition  
+- Real-time terminal output displays acquisition status and progress  
+- Scans are captured and stored as individual CSV files (time-voltage A-scans)  
+- Upon completion, the reconstruction pipeline is automatically triggered  
+- The GUI displays the final B-mode image along with analysis outputs (e.g., echo tracking)
 
 <img width="1241" height="728" alt="image" src="https://github.com/user-attachments/assets/99a7d523-d276-4f93-9a35-8b0196521f8b" />
+
+## Development History
+
+<details>
+<summary><strong>Prototypes</strong></summary>
+
+
 
 # Update (02/2026):  
 This document outlines the basic hardware setup and software processing pipeline used to generate a single-element ultrasound B-scan image using a custom pulser board, a PicoScope 2204A, and MATLAB. 
